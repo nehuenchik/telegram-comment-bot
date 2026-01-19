@@ -1,15 +1,16 @@
 import asyncio
 import random
 from telethon import TelegramClient, events
-from telethon.errors import ChatAdminRequiredError, FloodWaitError, SessionPasswordNeededError
+from telethon.sessions import StringSession  # ✅ ИСПРАВЛЕНО!
+from telethon.errors import ChatAdminRequiredError, FloodWaitError
 
-# ✅ ТВОЯ SESSION STRING (получи локально!)
+# ✅ ТВОЯ SESSION STRING
 SESSION_STRING = "1BJWap1sBu5TKmL67ra0nnhqoyZzDIGlxtvZI7CFEGlHs3uZ4615SV5gLduhIbWh921RCtpi0wtVCTj7UtaM640EpBY3VEkpKU5GnETdz7Q3UyxPL6SS7INWHMBz5GmoNi4aTHL3SxypkUVoeIZG5TDBtmmveQhNQjfMGkNRZ_6Tr1Euc55MoHAAFf2rp9p2JwNTAqs33OQ29hy4WkiS_TzOedH5WHue2i5Utn-HsiIJdsygUMWz0NYARvkyaHUki475hAVyRBzhF0Q2IY10E172AHsHgwZw4LoZkZqSXk5modWCClKf-epd4ldqdzuEDkbmBucEQMMcARuLNWAHHc5SvlNQLgNQ="  
 
 messages = ['топ', '1', 'спасибо', '🔥', 'круто', 'благодарю']
 
-# ✅ ИЗМЕНИЛ: StringSession вместо файла!
-client = TelegramClient(TelegramClient.StringSession(SESSION_STRING), 23315051, '927ac8e4ddfc1092134b414b1a17f5bd')
+# ✅ ПРАВИЛЬНО!
+client = TelegramClient(StringSession(SESSION_STRING), 23315051, '927ac8e4ddfc1092134b414b1a17f5bd')
 
 DISCUSSION_GROUPS = [-1001768427632, -1003304394138]
 MAIN_AUTHORS = {}
@@ -70,12 +71,12 @@ async def handler(event):
 async def main():
     global MY_ID
 
-    # ✅ Авторизация БЕЗ input() — сессия уже готова!
+    # ✅ Авторизация БЕЗ input()
     await client.start()
     
     # Кешируем свой ID
-    MY_ID = (await client.get_me()).id
     me = await client.get_me()
+    MY_ID = me.id
     print(f'🤖 @{me.username} (ID: {MY_ID}) ✅ SESSION OK!')
 
     # Ищем авторов
@@ -89,5 +90,6 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+
 
 
