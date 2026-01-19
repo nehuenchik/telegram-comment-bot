@@ -3,18 +3,17 @@ import random
 from telethon import TelegramClient, events
 from telethon.errors import ChatAdminRequiredError, FloodWaitError, SessionPasswordNeededError
 
-api_id = 23315051
-api_hash = '927ac8e4ddfc1092134b414b1a17f5bd'
-SESSION_NAME = 'clean_bot_2026'  # Новая чистая сессия
+# ✅ ТВОЯ SESSION STRING (получи локально!)
+SESSION_STRING = "1BJWap1sBu5TKmL67ra0nnhqoyZzDIGlxtvZI7CFEGlHs3uZ4615SV5gLduhIbWh921RCtpi0wtVCTj7UtaM640EpBY3VEkpKU5GnETdz7Q3UyxPL6SS7INWHMBz5GmoNi4aTHL3SxypkUVoeIZG5TDBtmmveQhNQjfMGkNRZ_6Tr1Euc55MoHAAFf2rp9p2JwNTAqs33OQ29hy4WkiS_TzOedH5WHue2i5Utn-HsiIJdsygUMWz0NYARvkyaHUki475hAVyRBzhF0Q2IY10E172AHsHgwZw4LoZkZqSXk5modWCClKf-epd4ldqdzuEDkbmBucEQMMcARuLNWAHHc5SvlNQLgNQ="  
 
 messages = ['топ', '1', 'спасибо', '🔥', 'круто', 'благодарю']
 
-client = TelegramClient(SESSION_NAME, api_id, api_hash)
+# ✅ ИЗМЕНИЛ: StringSession вместо файла!
+client = TelegramClient(TelegramClient.StringSession(SESSION_STRING), 23315051, '927ac8e4ddfc1092134b414b1a17f5bd')
 
 DISCUSSION_GROUPS = [-1001768427632, -1003304394138]
 MAIN_AUTHORS = {}
 last_commented_msg_id = {}
-
 
 async def get_channel_authors():
     """Ищем авторов ТОЛЬКО после полной авторизации"""
@@ -32,7 +31,6 @@ async def get_channel_authors():
                     break
         except Exception as e:
             print(f'❌ Канал {channel_id}: {e}')
-
 
 @client.on(events.NewMessage(chats=DISCUSSION_GROUPS))
 async def handler(event):
@@ -69,39 +67,27 @@ async def handler(event):
     except Exception as e:
         print(f'❌ {e}')
 
-
 async def main():
     global MY_ID
 
-    # ✅ Авторизация 1 раз (сессия сохраняется!)
+    # ✅ Авторизация БЕЗ input() — сессия уже готова!
     await client.start()
-
-    if not await client.is_user_authorized():
-        print('🔐 Нужна авторизация (1 раз):')
-        phone = input('Номер (+380...): ')
-        sent = await client.send_code_request(phone)
-        code = input('Код из Telegram app: ')
-        try:
-            await client.sign_in(phone, code)
-        except SessionPasswordNeededError:
-            pw = input('2FA пароль: ')
-            await client.sign_in(password=pw)
-        print('✅ Авторизация завершена!')
-
+    
     # Кешируем свой ID
     MY_ID = (await client.get_me()).id
     me = await client.get_me()
-    print(f'🤖 @{me.username} (ID: {MY_ID})')
+    print(f'🤖 @{me.username} (ID: {MY_ID}) ✅ SESSION OK!')
 
     # Ищем авторов
     await get_channel_authors()
 
     print(f'👥 Группы: {DISCUSSION_GROUPS}')
     print(f'📝 Авторы: {MAIN_AUTHORS}')
-    print('⚡ МОЛНИЕНОСНЫЙ бот готов!')
+    print('⚡ МОЛНИЕНОСНЫЙ бот готов! 24/7 на Render!')
 
     await client.run_until_disconnected()
 
-
 if __name__ == '__main__':
     asyncio.run(main())
+
+
