@@ -32,7 +32,7 @@ DISCUSSION_GROUPS = [-1001768427632, -1003304394138]
 CHANNEL_GROUP_MAP = {-1001579090675: -1001768427632, -1003485053085: -1003304394138}
 
 MAIN_AUTHORS = {}
-last_comment_time = {}  # only group → time (по msg_id не храним)
+last_comment_time = {}
 MY_ID = None
 RATE_LIMIT_SECONDS = 600  # 10 минут
 
@@ -47,33 +47,42 @@ ping_task = None
 async def health():
     return {
         "status": "ok",
-        "bot": "⚡ ANTI-SLEEP COMMENT BOT v3.0 (10min)",
+        "bot": "⚡ COMMENT BOT DEBUG v3.1",
         "groups": len(DISCUSSION_GROUPS),
         "authors": len(MAIN_AUTHORS),
+        "authors_list": dict(MAIN_AUTHORS),  # 🔥 ПОКАЗЫВАЕТ ID авторов
         "telethon_alive": telethon_alive,
+        "my_id": MY_ID,
         "last_error": str(last_telethon_error)[:80] if last_telethon_error else None,
         "restarts": restart_count,
-        "comments": sum(
-            1 if t > 0 else 0
-            for t in last_comment_time.values()
-        ),  # только group прошло время
+        "last_comments": {g: f"{int(time.time() - t)}s ago" for g, t in last_comment_time.items()},
         "memory_mb": round(psutil.Process().memory_info().rss / 1024 / 1024, 1),
         "uptime": "24/7"
     }
 
 
 async def get_channel_authors():
+    """🔍 Автоопределение авторов + fallback"""
+    global MAIN_AUTHORS
+    logger.info("🔍 Scanning channels for authors...")
+    
     for channel_id, group_id in CHANNEL_GROUP_MAP.items():
         try:
-            async for msg in client.iter_messages(channel_id, limit=1):
-                if msg.sender_id:
+            # Пробуем последнее сообщение
+            async for msg in client.iter_messages(channel_id, limit=5):  # +5 для надёжности
+                if msg.sender_id and msg.sender_id != MY_ID:
                     MAIN_AUTHORS[group_id] = msg.sender_id
                     if group_id not in last_comment_time:
                         last_comment_time[group_id] = 0
                     logger.info(f'✅ Group {group_id}: author {msg.sender_id}')
                     break
+            else:
+                logger.warning(f'⚠️ No author found in {channel_id}')
         except Exception as e:
             logger.error(f'❌ Channel {channel_id}: {e}')
+    
+    if not MAIN_AUTHORS:
+        logger.error("💥 NO AUTHORS FOUND! Check CHANNEL_GROUP_MAP IDs")
 
 
 @client.on(events.NewMessage(chats=DISCUSSION_GROUPS))
@@ -81,99 +90,103 @@ async def handler(event):
     global MY_ID
 
     if not MY_ID:
+        logger.debug("⏳ MY_ID not ready")
         return
 
     group_id = event.chat_id
     sender_id = event.sender_id
+    msg_id = event.id
+
+    # 🔥 ДЕБАГ: логируем ВСЕ посты от авторов
+    expected_author = MAIN_AUTHORS.get(group_id)
+    if expected_author:
+        logger.info(f'📨 POST: group={group_id}, sender={sender_id}/{expected_author}, msg={msg_id}')
 
     # только для указанных авторов
-    if sender_id != MAIN_AUTHORS.get(group_id):
+    if sender_id != expected_author:
         return
 
     # не отвечать себе
     if sender_id == MY_ID:
         return
 
-    # auto-init last_comment_time только по группе
+    # auto-init
     if group_id not in last_comment_time:
         last_comment_time[group_id] = 0
 
     now = asyncio.get_event_loop().time()
     time_passed = now - last_comment_time[group_id]
 
-    # раз в 10 минут + каждый новый пост → комментируем
+    logger.info(f'⏱️  Group {group_id}: {time_passed:.0f}s passed (need {RATE_LIMIT_SECONDS})')
+
+    # раз в 10 минут → комментируем
     if time_passed >= RATE_LIMIT_SECONDS:
         comment = random.choice(messages)
         try:
-            await client.send_message(group_id, comment, reply_to=event.id)
-            # обновляем время по группе, НЕ по msg_id
+            await client.send_message(group_id, comment, reply_to=msg_id)
             last_comment_time[group_id] = now
-            logger.info(f'✅ "{comment}" → group_{group_id}')
+            logger.info(f'✅ "{comment}" → group_{group_id} (msg {msg_id})')
         except ChatAdminRequiredError:
-            logger.warning('❌ Нет прав')
+            logger.warning('❌ Нет прав в группе')
         except FloodWaitError as e:
-            logger.warning(f'⏳ {e.seconds}s')
+            logger.warning(f'⏳ FloodWait {e.seconds}s')
             await asyncio.sleep(e.seconds)
         except Exception as e:
-            logger.error(f'❌ {e}')
+            logger.error(f'❌ Send error: {e}')
+    else:
+        logger.debug(f'⏳ Skip: {time_passed:.0f}s < {RATE_LIMIT_SECONDS}s')
 
 
 async def ping_telegram():
-    """🔔 ANTI-SLEEP: ping каждые 5мин"""
+    """🔔 ANTI-SLEEP"""
     global telethon_alive
     while telethon_alive:
         try:
-            await asyncio.sleep(300)  # 5 минут
+            await asyncio.sleep(300)
             await client.get_me()
             logger.debug('📡 Ping OK')
         except:
-            logger.warning('📡 Ping FAIL → restart soon')
+            logger.warning('📡 Ping FAIL')
             telethon_alive = False
             break
 
 
 async def telethon_worker():
-    """🔄 НЕУБИВАЕМЫЙ перезапуск"""
+    """🔄 Перезапуск"""
     global MY_ID, telethon_alive, last_telethon_error, restart_count, ping_task
 
     while True:
         try:
             telethon_alive = False
-            logger.info('🔄 Telethon restart...')
+            logger.info('🔄 Restarting Telethon...')
 
             await client.start()
             me = await client.get_me()
             MY_ID = me.id
-            logger.info(f'🤖 @{me.username} ({MY_ID})')
+            logger.info(f'🤖 @{me.username} ({MY_ID}) logged in')
 
             await get_channel_authors()
             telethon_alive = True
             last_telethon_error = None
             restart_count += 1
 
-            # 🔔 Запуск ping
             ping_task = asyncio.create_task(ping_telegram())
+            logger.info(f'🚀 ACTIVE | restarts: {restart_count} | authors: {MAIN_AUTHORS}')
 
-            logger.info(f'🚀 ACTIVE | restarts: {restart_count}')
             await client.run_until_disconnected()
 
-        except asyncio.TimeoutError:
-            logger.warning('⏰ Timeout restart')
         except Exception as e:
             telethon_alive = False
             last_telethon_error = str(e)
-            logger.error(f'💥 {e}')
+            logger.error(f'💥 Telethon crashed: {e}')
 
-        # 🛑 Отмена ping
         if ping_task:
             ping_task.cancel()
-            ping_task = None
-
-        await asyncio.sleep(5)  # Быстрый рестарт
+        await asyncio.sleep(5)
 
 
 async def main():
-    logger.info('🎯 ULTRA Bot (10min limit) starting...')
+    logger.info('🎯 DEBUG Bot starting...')
     asyncio.create_task(telethon_worker())
 
     config = uvicorn.Config(
@@ -186,6 +199,8 @@ async def main():
 
 
 if __name__ == '__main__':
+    import time  # для healthz
     asyncio.run(main())
+
 
 
