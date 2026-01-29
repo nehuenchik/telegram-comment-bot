@@ -32,31 +32,35 @@ DISCUSSION_GROUPS = [-1001768427632, -1003304394138]
 CHANNEL_GROUP_MAP = {-1001579090675: -1001768427632, -1003485053085: -1003304394138}
 
 MAIN_AUTHORS = {}
-last_commented_msg_id = {}
-last_comment_time = {}
+last_comment_time = {}  # only group → time (по msg_id не храним)
 MY_ID = None
-RATE_LIMIT_SECONDS = 1200  # 20 мин
+RATE_LIMIT_SECONDS = 600  # 10 минут
 
 telethon_alive = False
 last_telethon_error = None
 restart_count = 0
 ping_task = None
 
+
 @app.get("/healthz")
 @app.get("/")
 async def health():
     return {
         "status": "ok",
-        "bot": "⚡ ANTI-SLEEP COMMENT BOT v3.0",
+        "bot": "⚡ ANTI-SLEEP COMMENT BOT v3.0 (10min)",
         "groups": len(DISCUSSION_GROUPS),
         "authors": len(MAIN_AUTHORS),
         "telethon_alive": telethon_alive,
         "last_error": str(last_telethon_error)[:80] if last_telethon_error else None,
         "restarts": restart_count,
-        "comments": sum(len(ids) for ids in last_commented_msg_id.values()),
+        "comments": sum(
+            1 if t > 0 else 0
+            for t in last_comment_time.values()
+        ),  # только group прошло время
         "memory_mb": round(psutil.Process().memory_info().rss / 1024 / 1024, 1),
         "uptime": "24/7"
     }
+
 
 async def get_channel_authors():
     for channel_id, group_id in CHANNEL_GROUP_MAP.items():
@@ -64,8 +68,6 @@ async def get_channel_authors():
             async for msg in client.iter_messages(channel_id, limit=1):
                 if msg.sender_id:
                     MAIN_AUTHORS[group_id] = msg.sender_id
-                    if group_id not in last_commented_msg_id:
-                        last_commented_msg_id[group_id] = {}
                     if group_id not in last_comment_time:
                         last_comment_time[group_id] = 0
                     logger.info(f'✅ Group {group_id}: author {msg.sender_id}')
@@ -73,49 +75,48 @@ async def get_channel_authors():
         except Exception as e:
             logger.error(f'❌ Channel {channel_id}: {e}')
 
+
 @client.on(events.NewMessage(chats=DISCUSSION_GROUPS))
 async def handler(event):
     global MY_ID
-    
+
     if not MY_ID:
         return
 
     group_id = event.chat_id
-    msg_id = event.id
     sender_id = event.sender_id
 
-    # Авто-инициализация
-    if group_id not in last_commented_msg_id:
-        last_commented_msg_id[group_id] = {}
+    # только для указанных авторов
+    if sender_id != MAIN_AUTHORS.get(group_id):
+        return
+
+    # не отвечать себе
+    if sender_id == MY_ID:
+        return
+
+    # auto-init last_comment_time только по группе
     if group_id not in last_comment_time:
         last_comment_time[group_id] = 0
 
-    # ⚡ 4 быстрых фильтра
-    if sender_id != MAIN_AUTHORS.get(group_id):
-        return
-    if sender_id == MY_ID:
-        return
-    if msg_id in last_commented_msg_id[group_id]:
-        return
-
     now = asyncio.get_event_loop().time()
-    if now - last_comment_time[group_id] < RATE_LIMIT_SECONDS:
-        return
+    time_passed = now - last_comment_time[group_id]
 
-    comment = random.choice(messages)
+    # раз в 10 минут + каждый новый пост → комментируем
+    if time_passed >= RATE_LIMIT_SECONDS:
+        comment = random.choice(messages)
+        try:
+            await client.send_message(group_id, comment, reply_to=event.id)
+            # обновляем время по группе, НЕ по msg_id
+            last_comment_time[group_id] = now
+            logger.info(f'✅ "{comment}" → group_{group_id}')
+        except ChatAdminRequiredError:
+            logger.warning('❌ Нет прав')
+        except FloodWaitError as e:
+            logger.warning(f'⏳ {e.seconds}s')
+            await asyncio.sleep(e.seconds)
+        except Exception as e:
+            logger.error(f'❌ {e}')
 
-    try:
-        await client.send_message(group_id, comment, reply_to=msg_id)
-        last_commented_msg_id[group_id][msg_id] = True
-        last_comment_time[group_id] = now
-        logger.info(f'✅ "{comment}" → #{msg_id}')
-    except ChatAdminRequiredError:
-        logger.warning('❌ Нет прав')
-    except FloodWaitError as e:
-        logger.warning(f'⏳ {e.seconds}s')
-        await asyncio.sleep(e.seconds)
-    except Exception as e:
-        logger.error(f'❌ {e}')
 
 async def ping_telegram():
     """🔔 ANTI-SLEEP: ping каждые 5мин"""
@@ -130,15 +131,16 @@ async def ping_telegram():
             telethon_alive = False
             break
 
+
 async def telethon_worker():
     """🔄 НЕУБИВАЕМЫЙ перезапуск"""
     global MY_ID, telethon_alive, last_telethon_error, restart_count, ping_task
-    
+
     while True:
         try:
             telethon_alive = False
             logger.info('🔄 Telethon restart...')
-            
+
             await client.start()
             me = await client.get_me()
             MY_ID = me.id
@@ -148,37 +150,42 @@ async def telethon_worker():
             telethon_alive = True
             last_telethon_error = None
             restart_count += 1
-            
+
             # 🔔 Запуск ping
             ping_task = asyncio.create_task(ping_telegram())
-            
+
             logger.info(f'🚀 ACTIVE | restarts: {restart_count}')
             await client.run_until_disconnected()
-            
+
         except asyncio.TimeoutError:
             logger.warning('⏰ Timeout restart')
         except Exception as e:
             telethon_alive = False
             last_telethon_error = str(e)
             logger.error(f'💥 {e}')
-        
+
         # 🛑 Отмена ping
         if ping_task:
             ping_task.cancel()
             ping_task = None
-        
+
         await asyncio.sleep(5)  # Быстрый рестарт
 
+
 async def main():
-    logger.info('🎯 ULTRA Bot starting...')
+    logger.info('🎯 ULTRA Bot (10min limit) starting...')
     asyncio.create_task(telethon_worker())
-    
+
     config = uvicorn.Config(
-        app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)),
+        app, host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
         log_level="warning"
     )
     server = uvicorn.Server(config)
     await server.serve()
 
+
 if __name__ == '__main__':
     asyncio.run(main())
+
+
