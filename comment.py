@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-SESSION_STRING = "..."  # твой
+SESSION_STRING = "1BJWap1sBu4M7Og_xKvAXSrpZToA_HUSt0zWVZjrHjqZdrZYGEPS5jmjF1BzfIqs9X441k1Io11fKFT25ak5xs0xU88n1s8LGt0eBgL1VGzvAB3lGoLM2XzPmKhMxbiH3sVHfPQuskuyq4pFAX8VzW8zPSQITJRXNlPuE5gYcVZ0oBCprvQTyuoTNO5hoDB5YJC3nqfaewlIGn1bLKLnWdNLU5WKDL30ohi2s0T_gkjhh5HedgnVX5RhtUvT9XODvY8ALVb0gAGrL_tibtuM4KP7szziTfoITvDbcqm0wh2VYdF0l6Px1GMzwjcNiESBCBOW4BG5GVsCyj44bAeId9tPd5MtDNKs="  # твой
 
 messages = [
     'топ', '1', 'спасибо', '🔥', 'круто', 'благодарю',
@@ -181,3 +181,4 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+
