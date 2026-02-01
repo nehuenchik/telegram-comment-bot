@@ -12,37 +12,47 @@ SESSION_STRING = "1BJWap1sBu4M7Og_xKvAXSrpZToA_HUSt0zWVZjrHjqZdrZYGEPS5jmjF1BzfI
 API_ID = 23315051
 API_HASH = '927ac8e4ddfc1092134b414b1a17f5bd'
 
-TARGET_CHANNEL_ID = 1579090675; 3485053085
-GROUPS = [-1001768427632; -1003304394138]
+TARGET_CHANNELS = [1579090675, 3485053085]  # ✅ 2 канала!
+GROUPS = [-1001768427632, -1003304394138]   # ✅ 2 группы!
+
 RATE_LIMIT_SECONDS = 600
 messages = ['топ', '1', 'спасибо', '🔥', 'круто', 'благодарю',
             'лучший', 'интересно', '👍', 'огонь', 'супер', 'отлично',
             '👌', 'спс', 'класно', 'первый', 'о']
 
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-last_comment_time = 0
+last_comment_time = 0  # Общий рейт-лимит
 MY_ID = None
-
+recent_msgs = set()  # Защита от дублирования
 
 @client.on(events.NewMessage(chats=GROUPS))
 async def handler(event):
-    global last_comment_time, MY_ID
-
+    global last_comment_time, MY_ID, recent_msgs
+    
+    msg_id = event.id
+    
+    # ✅ Антидубликат (1 запрос на пост)
+    if msg_id in recent_msgs:
+        return
+    recent_msgs.add(msg_id)
+    
+    # ✅ Только forwarded
     if not event.forward:
         return
-
+    
+    # ✅ Только нужные каналы
     forward_channel = getattr(event.forward.from_id, 'channel_id', None)
-    if forward_channel != TARGET_CHANNEL_ID:
+    if forward_channel not in TARGET_CHANNELS:
         return
-
+    
     if MY_ID is None:
         MY_ID = (await client.get_me()).id
-
+    
     now = asyncio.get_event_loop().time()
     time_passed = now - last_comment_time
-
+    
     if time_passed >= RATE_LIMIT_SECONDS:
-        # ❌ УБРАНА ЛЮБАЯ ЗАДЕРЖКА!
+        # МГНОВЕННО! Без задержки
         comment = random.choice(messages)
         try:
             sent = await client.send_message(event.chat_id, comment, reply_to=event.id)
@@ -54,24 +64,32 @@ async def handler(event):
         except Exception as e:
             logger.error(f'❌ {e}')
 
-
 async def main():
     await client.start()
-    logger.info(f'🤖 АКТИВЕН: {TARGET_CHANNEL_ID} → {GROUPS}')
-
-    await client.get_entity(GROUPS[0])
-    logger.info('✅ Группа ОК')
-
+    logger.info(f'🤖 АКТИВЕН: каналы {TARGET_CHANNELS} → группы {GROUPS}')
+    
+    # Проверка доступа
+    for group in GROUPS:
+        try:
+            await client.get_entity(group)
+        except Exception as e:
+            logger.error(f'❌ {group}: {e}')
+    
+    # Healthcheck
     async def heartbeat():
         while True:
             await asyncio.sleep(300)
             logger.info('🟢 Alive')
-
+    
     asyncio.create_task(heartbeat())
     await client.run_until_disconnected()
 
-
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info('🛑 Stop')
+
+
 
 
