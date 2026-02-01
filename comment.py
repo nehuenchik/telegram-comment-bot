@@ -24,7 +24,7 @@ app = FastAPI()
 async def root():
     return {"status": "ok"}
 
-SESSION_STRING = "..."
+SESSION_STRING = "1BJWap1wBu7jsW2CiWoCtwLJh5GTNL4gXLM_zTnHQhd10Uo00Ebeer1oOoha3yDKjrEwfw9hfvv44KzCpHCK9BLcNU8gkfDsN-PWuuN6MB7WAsklvLOlzOSzD5f1Adc1QT6ojaXyVajWvE3Olhu8dtnvGsWUMsyrcErHAsPMnn0aKAdv-r3ahm_hF5-ramtHjnN38IAI3AzmSo4r0ZR5URMYpvJpF8bGsbLx0s1WXIhE_iw0uP3ExdJyM1swiE4uapnyqf1acH91dmkpGdU7h6qwzvWbvvAaaSWYO-b3ffF4DYEt_OxZa7gb9tIavzL74RijRbOhFTqsYmRhuf704K_mJgqjAyok="
 API_ID = 23315051
 API_HASH = "927ac8e4ddfc1092134b414b1a17f5bd"
 
@@ -96,6 +96,7 @@ async def telethon_worker():
 async def startup_event():
     # запускаем Telethon как фон-таск в том же loop, где крутится FastAPI
     asyncio.create_task(telethon_worker())
+
 
 
 
