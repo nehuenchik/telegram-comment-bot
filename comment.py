@@ -1,11 +1,12 @@
 import asyncio
+import asyncio
 import random
 import logging
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from telethon.errors import FloodWaitError
 
-# Минимальные логи для сервера
+# Логи только ошибки + статус (для Render Background Worker)
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s | %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -16,71 +17,71 @@ API_HASH = '927ac8e4ddfc1092134b414b1a17f5bd'
 
 GROUPS = [
     -1001768427632,  # Группа 1
-    -1003304394138  # Группа 2 (Hui)
+    -1003304394138   # Группа 2 (Hui)
 ]
 
-RATE_LIMIT_SECONDS = 600  # 10 минут на группу
+RATE_LIMIT_SECONDS = 600
 messages = ['топ', '1', 'спасибо', '🔥', 'круто', 'благодарю',
-    'лучший', 'интересно', '👍', 'огонь', 'супер', 'отлично',
-    '👌', 'спс', 'класно', 'первый', 'о']
+            'лучший', 'интересно', '👍', 'огонь', 'супер', 'отлично',
+            '👌', 'спс', 'класно', 'первый', 'о']
 
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 last_comment_time = {group: 0 for group in GROUPS}
 MY_ID = None
 
-
 @client.on(events.NewMessage(chats=GROUPS))
 async def handler(event):
     global last_comment_time, MY_ID
-
+    
     group_id = event.chat_id
-
+    
     if MY_ID is None:
-        me = await client.get_me()
-        MY_ID = me.id
-
-    # Пропускаем свои посты
+        MY_ID = (await client.get_me()).id
+    
     if event.sender_id == MY_ID:
         return
-
+    
     now = asyncio.get_event_loop().time()
     time_passed = now - last_comment_time[group_id]
-
+    
     if time_passed >= RATE_LIMIT_SECONDS:
-        # Задержка 1-3 сек
         await asyncio.sleep(random.uniform(1, 3))
-
+        
         comment = random.choice(messages)
         try:
             sent = await client.send_message(group_id, comment, reply_to=event.id)
             last_comment_time[group_id] = now
-            logger.info(f'✅ {group_id} | "{comment}" #{sent.id}')
+            logger.info(f'✅ {group_id} | {comment}')
         except FloodWaitError as e:
-            logger.warning(f'⏳ {group_id} | {e.seconds}s')
+            logger.warning(f'⏳ {e.seconds}s')
             await asyncio.sleep(e.seconds)
         except Exception as e:
-            logger.error(f'❌ {group_id} | {e}')
-
-    # Тихо пропускаем (без спама логов)
-
+            logger.error(f'❌ {e}')
 
 async def main():
     await client.start()
-    logger.info(f'🤖 АКТИВЕН: {len(GROUPS)} групп')
-
-    # Тихий тест (без сообщений)
+    logger.info(f'🤖 АКТИВЕН ({len(GROUPS)} групп)')
+    
+    # Проверка доступа (тихо)
     for group in GROUPS:
         try:
             await client.get_entity(group)
-        except:
-            logger.error(f'❌ Нет доступа: {group}')
-
+        except Exception as e:
+            logger.error(f'❌ {group}: {e}')
+    
+    # Healthcheck для Render (каждые 5 мин)
+    async def heartbeat():
+        while True:
+            await asyncio.sleep(300)
+            logger.info('🟢 Alive')
+    
+    asyncio.create_task(heartbeat())
+    
     await client.run_until_disconnected()
-
 
 if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info('🛑 Стоп')
+        logger.info('🛑 Stop')
 
