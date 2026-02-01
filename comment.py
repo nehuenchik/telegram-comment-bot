@@ -1,10 +1,16 @@
+#!/usr/bin/env python3
+# Telegram Comment Bot - Render FREE Web + Lifespan (обновлённый)
+
 import asyncio
 import random
 import logging
 import sys
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+import uvicorn
+
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from telethon.errors import FloodWaitError
@@ -18,21 +24,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
-
-@app.get("/")
-async def root():
-    return {"status": "ok"}
-
 SESSION_STRING = "1BJWap1wBu7jsW2CiWoCtwLJh5GTNL4gXLM_zTnHQhd10Uo00Ebeer1oOoha3yDKjrEwfw9hfvv44KzCpHCK9BLcNU8gkfDsN-PWuuN6MB7WAsklvLOlzOSzD5f1Adc1QT6ojaXyVajWvE3Olhu8dtnvGsWUMsyrcErHAsPMnn0aKAdv-r3ahm_hF5-ramtHjnN38IAI3AzmSo4r0ZR5URMYpvJpF8bGsbLx0s1WXIhE_iw0uP3ExdJyM1swiE4uapnyqf1acH91dmkpGdU7h6qwzvWbvvAaaSWYO-b3ffF4DYEt_OxZa7gb9tIavzL74RijRbOhFTqsYmRhuf704K_mJgqjAyok="
 API_ID = 23315051
-API_HASH = "927ac8e4ddfc1092134b414b1a17f5bd"
+API_HASH = '927ac8e4ddfc1092134b414b1a17f5bd'
 
 TARGET_CHANNELS = [1579090675, 3485053085]
 GROUPS = [-1001768427632, -1003304394138]
 
 RATE_LIMIT_SECONDS = 600
-messages = [...]
+messages = ['топ', '1', 'спасибо', '🔥', 'круто', 'благодарю',
+            'лучший', 'интересно', '👍', 'огонь', 'супер', 'отлично',
+            '👌', 'спс', 'класно', 'первый', 'о']
+
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 last_comment_time = 0
 MY_ID = None
@@ -73,7 +76,8 @@ async def handler(event):
         logger.error(f"❌ {e}")
 
 
-async def telethon_worker():
+async def telethon_startup():
+    """Запуск Telethon"""
     await client.start()
     logger.info(f"🤖 АКТИВЕН: {TARGET_CHANNELS} → {GROUPS}")
     for g in GROUPS:
@@ -89,13 +93,43 @@ async def telethon_worker():
             logger.info("🟢 Bot alive")
 
     asyncio.create_task(heartbeat())
-    await client.run_until_disconnected()
 
 
-@app.on_event("startup")
-async def startup_event():
-    # запускаем Telethon как фон-таск в том же loop, где крутится FastAPI
-    asyncio.create_task(telethon_worker())
+async def telethon_shutdown():
+    """Остановка Telethon"""
+    await client.disconnect()
+    logger.info('🛑 Telethon stopped')
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: запускаем Telethon
+    await telethon_startup()
+    yield
+    # Shutdown
+    await telethon_shutdown()
+
+
+# Современный FastAPI Lifespan (без warning)
+app = FastAPI(lifespan=lifespan)
+
+@app.get("/")
+async def root():
+    return {"status": "Telegram Comment Bot 🔔", "alive": True}
+
+@app.get("/health")
+async def health():
+    return {"status": "alive", "listening": True}
+
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run(
+        "comment:app",
+        host="0.0.0.0",
+        port=port,
+        log_level="info"
+    )
 
 
 
