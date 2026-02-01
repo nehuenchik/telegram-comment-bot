@@ -1,11 +1,26 @@
+#!/usr/bin/env python3
+# Telegram Comment Bot - Render Background Worker Fix
+# Комментирует ТОЛЬКО forwarded посты от каналов в указанные группы
+# ✅ Логи видны в Render сразу!
+
 import asyncio
 import random
 import logging
+import sys
+import os
+
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from telethon.errors import FloodWaitError
 
-logging.basicConfig(level=logging.WARNING, format='%(asctime)s | %(message)s')
+# ✅ ФИКС Render: принудительный вывод логов в stdout
+os.environ['PYTHONUNBUFFERED'] = '1'
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)],
+    force=True
+)
 logger = logging.getLogger(__name__)
 
 SESSION_STRING = "1BJWap1wBux2jgHDja76evZiaiSp4ZjoGGb_biQVh9kOdYBKm9LKqKoSt-XhtAxMcE7DjErX53ntwQDfRzzCuKsp7BLcRClCQOSNdA0pYY7sHg4gbirA62RdD0gXVEe7yIWLVCdcBgdJTYq__IEgL3WKyN7IDchaxD2skwH6CaVAAMJVqEevsS53fxT6SrkxtM1LxmLPP8Wip2Jt_P0MzbhDozIAerFoituBlXuBFCLHQA8wG8aL-rUwv3H-5G9wxmE4onxhHr4RdowNfewnaPTQPgzYNZajLuxt-O53kdm0FFHB-_Se6Uc_G5LfiumSMLWay2XeB7mXaNTwVwzvwq4I4Kgm-12M="
@@ -58,12 +73,14 @@ async def handler(event):
         try:
             sent = await client.send_message(event.chat_id, comment, reply_to=event.id)
             last_comment_time = now
-            logger.info(f'✅ {comment}')
+            logger.info(f'✅ {comment} под постом #{msg_id}')
         except FloodWaitError as e:
-            logger.warning(f'⏳ {e.seconds}s')
+            logger.warning(f'⏳ FloodWait {e.seconds}s')
             await asyncio.sleep(e.seconds)
         except Exception as e:
-            logger.error(f'❌ {e}')
+            logger.error(f'❌ Ошибка отправки: {e}')
+    else:
+        logger.debug(f'⏳ Рейт-лимит, осталось {RATE_LIMIT_SECONDS - time_passed:.0f}s')
 
 
 async def main():
@@ -74,14 +91,15 @@ async def main():
     for group in GROUPS:
         try:
             await client.get_entity(group)
+            logger.info(f'✅ Доступ к группе {group}')
         except Exception as e:
-            logger.error(f'❌ {group}: {e}')
+            logger.error(f'❌ Нет доступа к {group}: {e}')
 
-    # Healthcheck
+    # Healthcheck каждые 5 мин
     async def heartbeat():
         while True:
             await asyncio.sleep(300)
-            logger.info('🟢 Alive')
+            logger.info('🟢 Bot alive - слушает сообщения')
 
     asyncio.create_task(heartbeat())
     await client.run_until_disconnected()
@@ -91,6 +109,8 @@ if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info('🛑 Stop')
+        logger.info('🛑 Stopped by user')
+    except Exception as e:
+        logger.error(f'❌ Критическая ошибка: {e}')
 
 
