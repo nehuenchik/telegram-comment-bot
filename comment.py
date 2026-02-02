@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# Telegram Comment Bot - Render FREE Web + Lifespan (обновлённый)
+# Telegram Comment Bot DEBUG - Render FREE Web + Lifespan
+# ✅ ЛОВИТ ВСЕ ПОСТЫ + показывает где застревает!
 
 import asyncio
 import random
@@ -45,91 +46,102 @@ recent_msgs = set()
 @client.on(events.NewMessage(chats=GROUPS))
 async def handler(event):
     global last_comment_time, MY_ID, recent_msgs
+    
+    # 🔥 DEBUG: ЛОВИМ ВСЕ ПОСТЫ В ГРУППЕ!
+    logger.info(f"📨 ПОСТ #{event.id} chat={event.chat_id}")
+    
     msg_id = event.id
     if msg_id in recent_msgs:
+        logger.info(f"⏭️ Дубликат #{msg_id}")
         return
     recent_msgs.add(msg_id)
 
+    # 🔥 DEBUG: forwarded?
+    logger.info(f"🔄 Forwarded: {bool(event.forward)}")
     if not event.forward:
+        logger.info("❌ НЕ forwarded → игнор")
         return
 
+    # 🔥 DEBUG: какой канал?
     forward_channel = getattr(event.forward.from_id, 'channel_id', None)
+    logger.info(f"📢 Канал: {forward_channel} (цель: {TARGET_CHANNELS})")
     if forward_channel not in TARGET_CHANNELS:
+        logger.info("❌ НЕ наш канал → игнор")
         return
+
+    logger.info("✅ ПРОШЁЛ ФИЛЬТРЫ!")
 
     if MY_ID is None:
         MY_ID = (await client.get_me()).id
+        logger.info(f"👤 Мой ID: {MY_ID}")
 
     now = asyncio.get_event_loop().time()
-    if now - last_comment_time < RATE_LIMIT_SECONDS:
+    time_passed = now - last_comment_time
+    logger.info(f"⏱️ Прошло: {time_passed:.0f}s (нужно {RATE_LIMIT_SECONDS})")
+    
+    if time_passed < RATE_LIMIT_SECONDS:
+        logger.info("⏳ Рейт-лимит → ждём")
         return
 
     comment = random.choice(messages)
+    logger.info(f"💬 Отправляем: '{comment}'")
+    
     try:
-        await client.send_message(event.chat_id, comment, reply_to=event.id)
+        sent = await client.send_message(event.chat_id, comment, reply_to=event.id)
         last_comment_time = now
-        logger.info(f"✅ {comment} #{msg_id}")
+        logger.info(f"✅ '{comment}' #{msg_id} → #{sent.id}")
     except FloodWaitError as e:
         logger.warning(f"⏳ FloodWait {e.seconds}s")
         await asyncio.sleep(e.seconds)
     except Exception as e:
-        logger.error(f"❌ {e}")
+        logger.error(f"❌ Ошибка: {e}")
 
 
 async def telethon_startup():
-    """Запуск Telethon"""
     await client.start()
-    logger.info(f"🤖 АКТИВЕН: {TARGET_CHANNELS} → {GROUPS}")
+    logger.info(f"🤖 АКТИВЕН: каналы {TARGET_CHANNELS} → группы {GROUPS}")
+    
     for g in GROUPS:
         try:
-            await client.get_entity(g)
-            logger.info(f"✅ Группа {g}")
+            entity = await client.get_entity(g)
+            logger.info(f"✅ Группа {g} '{entity.title}'")
         except Exception as e:
             logger.error(f"❌ {g}: {e}")
 
     async def heartbeat():
         while True:
             await asyncio.sleep(300)
-            logger.info("🟢 Bot alive")
+            logger.info("🟢 Bot alive - ловит посты")
 
     asyncio.create_task(heartbeat())
 
 
 async def telethon_shutdown():
-    """Остановка Telethon"""
     await client.disconnect()
-    logger.info('🛑 Telethon stopped')
+    logger.info('🛑 Telethon остановлен')
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: запускаем Telethon
     await telethon_startup()
     yield
-    # Shutdown
     await telethon_shutdown()
 
 
-# Современный FastAPI Lifespan (без warning)
 app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 async def root():
-    return {"status": "Telegram Comment Bot 🔔", "alive": True}
+    return {"status": "Telegram Comment Bot DEBUG 🔔", "alive": True}
 
 @app.get("/health")
 async def health():
-    return {"status": "alive", "listening": True}
+    return {"status": "alive", "debug": True}
 
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
-    uvicorn.run(
-        "comment:app",
-        host="0.0.0.0",
-        port=port,
-        log_level="info"
-    )
+    uvicorn.run("comment:app", host="0.0.0.0", port=port, log_level="info")
 
 
 
